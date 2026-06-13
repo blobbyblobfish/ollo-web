@@ -248,24 +248,24 @@ const Home = () => {
             locked in for everyone who starts during early access.
           </p>
           <div className="pricing">
-            <div className="price-card">
+            <div className="price-card featured">
               <span className="badge badge-trial">Free trial</span>
               <h3>Founder's Keepsake</h3>
               <div className="price">
                 $99 <span>once</span>
               </div>
               <ul>
-                <li>Story prompts emailed or texted</li>
+                <li>Daily story prompts by email</li>
                 <li>Written, voice, and photo stories</li>
                 <li>Private online archive</li>
                 <li>Perpetuity Fund included</li>
               </ul>
-              <Link className="btn btn-ghost" to="/start">
+              <Link className="btn btn-gold" to="/start">
                 Buy now - free week
               </Link>
             </div>
-            <div className="price-card featured">
-              <span className="badge">Most loved</span>
+            <div className="price-card soon">
+              <span className="badge badge-soon">Coming soon</span>
               <h3>Founder's Saga</h3>
               <div className="price">
                 $199 <span>once</span>
@@ -276,11 +276,11 @@ const Home = () => {
                 <li><span className="amp">&amp;</span>Hardcover heirloom book</li>
                 <li><span className="amp">&amp;</span>Up to 5 family contributors</li>
               </ul>
-              <Link className="btn btn-gold" to="/start">
-                Buy now
-              </Link>
+              <button className="btn btn-ghost" disabled>
+                Coming soon
+              </button>
             </div>
-            <div className="price-card">
+            <div className="price-card soon">
               <span className="badge badge-soon">Coming soon</span>
               <h3>Founder's Legacy</h3>
               <div className="price">
@@ -292,9 +292,9 @@ const Home = () => {
                 <li><span className="amp">&amp;</span>Three printed books</li>
                 <li><span className="amp">&amp;</span>Unlimited contributors</li>
               </ul>
-              <Link className="btn btn-ghost" to="/start">
-                Buy now
-              </Link>
+              <button className="btn btn-ghost" disabled>
+                Coming soon
+              </button>
             </div>
           </div>
         </div>

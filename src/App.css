@@ -728,6 +728,28 @@
   border: 1px solid var(--line);
 }
 
+/* Coming-soon tiers — visibly inactive so nothing is misleading. */
+.price-card.soon {
+  opacity: 0.6;
+  filter: grayscale(0.35);
+}
+
+.price-card.soon .price {
+  color: var(--ink-soft);
+}
+
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn:disabled:hover,
+.btn[disabled]:hover {
+  transform: none;
+}
+
 .price-card h3 {
   font-size: 1.5rem;
   margin-bottom: 4px;

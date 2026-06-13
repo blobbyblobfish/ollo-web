@@ -22,6 +22,9 @@ import AuthCard from '../AuthCard';
 
 const isValidPhone = (v) => v.replace(/\D/g, '').length >= 10;
 
+// SMS delivery isn't live yet — keep it off so beta users aren't misled.
+const SMS_ENABLED = false;
+
 /* Reject if a promise (e.g. a hanging Firestore read) doesn't settle in time,
    so the UI never spins forever. */
 const withTimeout = (promise, ms = 12000) =>
@@ -127,7 +130,7 @@ const Start = () => {
           });
           if (data.delivery) {
             setDelivery({
-              text: !!data.delivery.text,
+              text: SMS_ENABLED ? !!data.delivery.text : false,
               email: !!data.delivery.email,
               phone: !!data.delivery.phone,
             });
@@ -517,12 +520,20 @@ const Start = () => {
         <div className="option-grid">
           <button
             className={`option ${delivery.text ? 'selected' : ''}`}
-            onClick={() => toggleChannel('text')}
+            onClick={() => SMS_ENABLED && toggleChannel('text')}
+            disabled={!SMS_ENABLED}
           >
             <span className="opt-ico">📱</span>
             <span>
-              <span className="opt-title">Text message</span>
-              <span className="opt-desc">A daily prompt by SMS.</span>
+              <span className="opt-title">
+                Text message
+                {!SMS_ENABLED && <span className="opt-lock">Soon</span>}
+              </span>
+              <span className="opt-desc">
+                {SMS_ENABLED
+                  ? 'A daily prompt by SMS.'
+                  : 'Text delivery is coming soon — email works great today.'}
+              </span>
             </span>
             <span className="opt-check">✓</span>
           </button>
