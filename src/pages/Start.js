@@ -6,10 +6,18 @@ import {
   signInWithEmailLink,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { PROMPTS } from '../prompts';
 import { EMAIL_KEY, friendly, isValidEmail, sendSignInLink } from '../auth';
+import { mintMyToken } from '../functions';
 import AuthCard from '../AuthCard';
 
 const isValidPhone = (v) => v.replace(/\D/g, '').length >= 10;
@@ -48,6 +56,7 @@ const Start = () => {
   const [delivery, setDelivery] = useState({ text: false, email: true, phone: false });
 
   const [campaign, setCampaign] = useState(null);
+  const [responses, setResponses] = useState([]);
 
   const finishingRef = useRef(false);
   const phoneEnabled = tier === 'legacy';
@@ -151,6 +160,27 @@ const Start = () => {
     };
   }, [user]);
 
+  /* 5. Once the campaign is live, load answers the storyteller has sent in. */
+  useEffect(() => {
+    if (phase !== 'active' || !user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const qs = await getDocs(collection(db, 'users', user.uid, 'responses'));
+        if (cancelled) return;
+        const arr = qs.docs
+          .map((d) => d.data())
+          .sort((a, b) => (a.promptIndex || 0) - (b.promptIndex || 0));
+        setResponses(arr);
+      } catch {
+        /* archive load is non-critical */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, user]);
+
   /* ---------- actions ---------- */
   const sendLink = async (e) => {
     e.preventDefault();
@@ -228,7 +258,9 @@ const Start = () => {
         total: PROMPTS.length,
         currentIndex: 0,
         startedAt: serverTimestamp(),
-        nextSendAt: null, // null = send the first prompt on the next run
+        // First prompt fires at this creation time on the next scheduler tick;
+        // every following day lands at the same clock time (sender adds +24h).
+        nextSendAt: serverTimestamp(),
         lastSentAt: null,
       };
       await persistOnboarding({ onboarded: true, campaign: newCampaign });
@@ -245,6 +277,17 @@ const Start = () => {
     setUser(null);
     setCampaign(null);
     setPhase('account');
+  };
+
+  // Open the storyteller response page for the next prompt — no message sent.
+  const previewLink = async () => {
+    setError('');
+    try {
+      const res = await mintMyToken({ promptIndex: campaign?.currentIndex || 0 });
+      window.open(res.data.path, '_blank', 'noopener');
+    } catch (err) {
+      setError(friendly(err));
+    }
   };
 
   /* ---------- shell ---------- */
@@ -468,7 +511,7 @@ const Start = () => {
         <p className="step-eyebrow">Step 2 of 2 · Delivery</p>
         <h2>How should {stName} receive each prompt?</h2>
         <p className="q-help">
-          Pick one or more — we'll send a new prompt every day.
+          Pick one or multiple.
         </p>
 
         <div className="option-grid">
@@ -593,8 +636,8 @@ const Start = () => {
           </h2>
           <p className="q-help">
             The free week has begun. {firstName} will get{' '}
-            <strong>one prompt a day</strong> via {channelLabel} — just reply to
-            each message and every answer is saved to your private archive.
+            <strong>one prompt a day</strong> via {channelLabel} — just go to
+            each link and every answer is saved to your private archive.
           </p>
         </div>
 
@@ -615,7 +658,42 @@ const Start = () => {
           </div>
         </div>
 
+        {responses.length > 0 && (
+          <>
+            <h3 style={{ marginTop: 32 }}>Stories so far</h3>
+            <div className="archive-list">
+              {responses.map((r) => (
+                <div className="archive-item" key={r.promptIndex}>
+                  <span className="archive-day">
+                    {PROMPTS[r.promptIndex]?.day || `Day ${r.promptIndex + 1}`}
+                  </span>
+                  <p className="archive-q">{r.promptText}</p>
+                  {r.text && <p className="archive-a">{r.text}</p>}
+                  {((r.photos || []).length > 0 || (r.audio || []).length > 0) && (
+                    <p className="archive-media">
+                      {(r.photos || []).length > 0 &&
+                        `📷 ${r.photos.length} photo${
+                          r.photos.length === 1 ? '' : 's'
+                        }`}
+                      {(r.photos || []).length > 0 &&
+                        (r.audio || []).length > 0 &&
+                        ' · '}
+                      {(r.audio || []).length > 0 && '🎙️ voice recording'}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="trial-cta-row">
+          <Link to="/archive" className="btn btn-gold">
+            Open the family archive →
+          </Link>
+          <button className="btn btn-ghost" onClick={previewLink}>
+            Preview the storyteller link
+          </button>
           <button className="btn btn-ghost" onClick={() => setPhase('delivery')}>
             Change delivery settings
           </button>

@@ -3,14 +3,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Each signed-in person can read and write only their own saga document.
+    // Each signed-in person can read and write only their own saga document,
+    // including the responses subcollection (which they read in their archive).
+    // Storyteller answers are written by Cloud Functions (admin), which bypass
+    // these rules — the storyteller has no account.
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
 
-      // Future-proofing: any per-user subcollections inherit the same rule.
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
+    }
+
+    // Link tokens are secret. Only Cloud Functions (admin) may touch them.
+    match /tokens/{token} {
+      allow read, write: if false;
     }
   }
 }

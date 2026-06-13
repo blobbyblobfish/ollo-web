@@ -1,0 +1,20 @@
+{
+  "name": "functions",
+  "description": "Cloud Functions for Our Love Lives On — daily prompt sender + storyteller response API",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.4",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.1.0",
+    "twilio": "^5.3.5",
+    "uuid": "^11.0.3"
+  }
+}

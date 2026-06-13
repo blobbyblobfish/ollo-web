@@ -1,0 +1,14 @@
+[
+  {
+    "origin": [
+      "http://localhost:3000",
+      "https://ourloveliveson.com",
+      "https://www.ourloveliveson.com",
+      "https://our-love-lives-on.web.app",
+      "https://our-love-lives-on.firebaseapp.com"
+    ],
+    "method": ["GET", "PUT"],
+    "responseHeader": ["Content-Type"],
+    "maxAgeSeconds": 3600
+  }
+]
