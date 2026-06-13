@@ -30,7 +30,11 @@ export function friendly(err) {
     case 'auth/invalid-action-code':
       return 'That sign-in link has expired or was already used. Let’s send a fresh one.';
     case 'permission-denied':
-      return 'Couldn’t save to your account — Firestore rules may need updating.';
+      return 'Couldn’t reach your account — your Firestore security rules may be denying access. Deploy the rules with: firebase deploy --only firestore:rules';
+    case 'unavailable':
+      return 'Couldn’t reach the database. Make sure a Firestore database has been created for this project, then try again.';
+    case 'timeout':
+      return 'This is taking longer than expected — your Firestore database may not be created yet (Firebase console → Firestore Database → Create database), or you’re offline.';
     default:
       return err?.message || 'Something went wrong. Please try again.';
   }

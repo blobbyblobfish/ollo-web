@@ -693,15 +693,15 @@
   padding: 34px 30px;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .price-card.featured {
   border: 2px solid var(--gold);
   box-shadow: var(--shadow-md);
-  position: relative;
 }
 
-.price-card.featured .badge {
+.price-card .badge {
   position: absolute;
   top: -13px;
   left: 50%;
@@ -714,6 +714,18 @@
   letter-spacing: 0.1em;
   padding: 5px 14px;
   border-radius: 999px;
+  white-space: nowrap;
+}
+
+.price-card .badge.badge-trial {
+  background: var(--wine);
+  color: var(--gold);
+}
+
+.price-card .badge.badge-soon {
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
 }
 
 .price-card h3 {
@@ -1256,6 +1268,7 @@
 }
 
 .option .opt-title {
+  display: block;
   font-weight: 600;
   color: var(--ink);
   font-size: 1.08rem;
@@ -1263,6 +1276,7 @@
 }
 
 .option .opt-desc {
+  display: block;
   font-size: 0.92rem;
   color: var(--ink-soft);
 }
@@ -1276,6 +1290,43 @@
 
 .option.selected .opt-check {
   opacity: 1;
+}
+
+/* Disabled option (e.g. phone call locked to the Legacy tier) */
+.option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.option:disabled:hover {
+  transform: none;
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.opt-lock {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  padding: 1px 7px;
+  vertical-align: middle;
+}
+
+/* Onboarding field group revealed under an option selection */
+.onboard-fields {
+  margin-top: 22px;
+}
+
+.optional {
+  color: var(--ink-soft);
+  font-weight: 400;
+  font-size: 0.86em;
 }
 
 .field {

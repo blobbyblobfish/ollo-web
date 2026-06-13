@@ -34,7 +34,7 @@ const Home = () => {
           <div className="hero-content">
             <span className="kicker">✦ Your family's stories, preserved forever</span>
             <h1>
-              Pass down the stories you cherish{' '}
+              Pass down the stories you cherish,{' '}
               <em>eternally</em>.
             </h1>
             <p className="hero-sub">
@@ -59,8 +59,7 @@ const Home = () => {
 
       {/* ---------- Trust strip ---------- */}
       <div className="trust-strip">
-        Unlike <strong>StoryWorth</strong>, your stories don't expire when a
-        subscription ends — they're preserved by our{' '}
+        Unlike competitor products, your stories don't disappear — they're preserved by our{' '}
         <strong>Perpetuity Fund</strong>, forever.
       </div>
 
@@ -193,8 +192,8 @@ const Home = () => {
                 Built to outlive subscriptions — and outlive us.
               </h2>
               <p>
-                Most memory services vanish when a card declines or a company folds.
-                We set aside part of every purchase into an endowment whose only job
+                Most memory services vanish when the money stops coming in.
+                Unlike other companies, we set aside part of every purchase into an endowment whose only job
                 is to keep your saga alive.
               </p>
               <ul className="fund-points">
@@ -245,28 +244,29 @@ const Home = () => {
           <p className="eyebrow">Simple, one-time pricing</p>
           <h2 className="section-title">Pay once. Yours forever.</h2>
           <p className="section-lead">
-            No annual renewals. Try a week free first — founding-member pricing is
+            No renewing costs. Try a week free first — founding-member pricing is
             locked in for everyone who starts during early access.
           </p>
           <div className="pricing">
             <div className="price-card">
-              <h3>Keepsake</h3>
+              <span className="badge badge-trial">Free trial</span>
+              <h3>Founder's Keepsake</h3>
               <div className="price">
                 $99 <span>once</span>
               </div>
               <ul>
-                <li>Guided weekly prompts</li>
+                <li>Story prompts emailed or texted</li>
                 <li>Written, voice, and photo stories</li>
                 <li>Private online archive</li>
                 <li>Perpetuity Fund included</li>
               </ul>
               <Link className="btn btn-ghost" to="/start">
-                Buy now
+                Buy now - free week
               </Link>
             </div>
             <div className="price-card featured">
               <span className="badge">Most loved</span>
-              <h3>Saga</h3>
+              <h3>Founder's Saga</h3>
               <div className="price">
                 $199 <span>once</span>
               </div>
@@ -281,7 +281,8 @@ const Home = () => {
               </Link>
             </div>
             <div className="price-card">
-              <h3>Legacy</h3>
+              <span className="badge badge-soon">Coming soon</span>
+              <h3>Founder's Legacy</h3>
               <div className="price">
                 $349 <span>once</span>
               </div>
@@ -314,7 +315,7 @@ const Home = () => {
       <section className="section cta-final" id="start">
         <div className="container center">
           <p className="eyebrow">Try it free</p>
-          <h2 className="section-title">Start preserving your love story today.</h2>
+          <h2 className="section-title">Start preserving your love today.</h2>
           <p className="section-lead">
             Create your free account and begin a week of prompts right now — one
             gentle question a day. No credit card, and your stories are yours to

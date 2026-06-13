@@ -63,7 +63,7 @@ const Login = () => {
     body = (
       <>
         <p className="eyebrow">Welcome back</p>
-        <h2 className="auth-title">Log in to your saga.</h2>
+        <h2 className="auth-title">Log in to your account.</h2>
         <p className="auth-lead">
           Enter your email and we'll send a one-tap sign-in link — no password
           needed.
@@ -85,7 +85,7 @@ const Login = () => {
             {busy ? 'Sending…' : 'Email me a sign-in link →'}
           </button>
           <p className="auth-alt">
-            New here? <Link to="/start">Start your free week →</Link>
+            New here? <Link to="/start">Register →</Link>
           </p>
         </form>
       </>

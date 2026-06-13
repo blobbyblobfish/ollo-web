@@ -12,8 +12,24 @@ import { PROMPTS } from '../prompts';
 import { EMAIL_KEY, friendly, isValidEmail, sendSignInLink } from '../auth';
 import AuthCard from '../AuthCard';
 
+const isValidPhone = (v) => v.replace(/\D/g, '').length >= 10;
+
+/* Reject if a promise (e.g. a hanging Firestore read) doesn't settle in time,
+   so the UI never spins forever. */
+const withTimeout = (promise, ms = 12000) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(Object.assign(new Error('timeout'), { code: 'timeout' })),
+        ms
+      )
+    ),
+  ]);
+
 const Start = () => {
-  const [phase, setPhase] = useState('loading'); // loading|account|sent|finishing|welcome|week|done
+  // loading|account|sent|finishing|welcome|storyteller|delivery|week|done
+  const [phase, setPhase] = useState('loading');
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -21,10 +37,20 @@ const Start = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const [answers, setAnswers] = useState(() => Array(PROMPTS.length).fill(''));
-  const [index, setIndex] = useState(0);
+  // Onboarding selections
+  const [tier, setTier] = useState('free'); // free|keepsake|saga|legacy
+  const [storyteller, setStoryteller] = useState({
+    who: null, // 'self' | 'other'
+    name: '',
+    relationship: '',
+  });
+  const [contact, setContact] = useState({ email: '', phone: '' });
+  const [delivery, setDelivery] = useState({ text: false, email: true, phone: false });
+
+  const [campaign, setCampaign] = useState(null);
 
   const finishingRef = useRef(false);
+  const phoneEnabled = tier === 'legacy';
 
   /* 1. Complete an email-link sign-in if we arrived from one. */
   useEffect(() => {
@@ -74,27 +100,47 @@ const Start = () => {
     (async () => {
       try {
         const ref = doc(db, 'users', user.uid);
-        const snap = await getDoc(ref);
+        const snap = await withTimeout(getDoc(ref));
         if (cancelled) return;
         if (snap.exists()) {
           const data = snap.data();
-          const wk = data.week || {};
-          const loaded = PROMPTS.map((_, i) => wk[i] || '');
-          setAnswers(loaded);
-          if (data.completed) {
-            setPhase('done');
-            return;
+          setTier(data.tier || 'free');
+          if (data.storyteller) {
+            setStoryteller({
+              who: data.storyteller.who || null,
+              name: data.storyteller.name || '',
+              relationship: data.storyteller.relationship || '',
+            });
           }
-          const nextUnanswered = loaded.findIndex((a) => !a.trim());
-          setIndex(nextUnanswered === -1 ? 0 : nextUnanswered);
-          setPhase(data.startedWeek ? 'week' : 'welcome');
+          setContact({
+            email: data.contact?.email || user.email || '',
+            phone: data.contact?.phone || '',
+          });
+          if (data.delivery) {
+            setDelivery({
+              text: !!data.delivery.text,
+              email: !!data.delivery.email,
+              phone: !!data.delivery.phone,
+            });
+          }
+          if (data.campaign) {
+            setCampaign(data.campaign);
+            setPhase('active');
+          } else {
+            setPhase('welcome');
+          }
         } else {
-          await setDoc(
-            ref,
-            { email: user.email, createdAt: serverTimestamp() },
-            { merge: true }
+          await withTimeout(
+            setDoc(
+              ref,
+              { email: user.email, createdAt: serverTimestamp() },
+              { merge: true }
+            )
           );
-          if (!cancelled) setPhase('welcome');
+          if (!cancelled) {
+            setContact({ email: user.email || '', phone: '' });
+            setPhase('welcome');
+          }
         }
       } catch (err) {
         if (!cancelled) setError(friendly(err));
@@ -123,73 +169,120 @@ const Start = () => {
     setBusy(false);
   };
 
-  const persist = async (extra = {}) => {
-    if (!user) return;
-    const week = {};
-    answers.forEach((a, i) => {
-      week[i] = a;
-    });
-    await setDoc(
+  const persistOnboarding = async (extra = {}) =>
+    setDoc(
       doc(db, 'users', user.uid),
-      { week, startedWeek: true, updatedAt: serverTimestamp(), ...extra },
+      { storyteller, contact, delivery, updatedAt: serverTimestamp(), ...extra },
       { merge: true }
     );
-  };
 
-  const setAnswer = (text) =>
-    setAnswers((a) => {
-      const next = a.slice();
-      next[index] = text;
-      return next;
-    });
+  const toggleChannel = (key) =>
+    setDelivery((d) => ({ ...d, [key]: !d[key] }));
 
-  const startWeek = async () => {
-    setPhase('week');
-    persist().catch((err) => setError(friendly(err)));
-  };
-
-  const goNext = async () => {
+  const submitStoryteller = async () => {
+    if (!storyteller.who) {
+      setError('Please choose who the storyteller is.');
+      return;
+    }
+    if (!storyteller.name.trim()) {
+      setError(
+        storyteller.who === 'self'
+          ? 'Please enter your name.'
+          : "Please enter the storyteller's name."
+      );
+      return;
+    }
+    setError('');
     setBusy(true);
     try {
-      const isLast = index >= PROMPTS.length - 1;
-      await persist(isLast ? { completed: true } : {});
-      if (isLast) setPhase('done');
-      else setIndex((i) => i + 1);
+      await persistOnboarding();
+      setPhase('delivery');
     } catch (err) {
       setError(friendly(err));
     }
     setBusy(false);
   };
 
-  const goBack = () => setIndex((i) => Math.max(0, i - 1));
+  const submitDelivery = async () => {
+    if (!delivery.text && !delivery.email && !delivery.phone) {
+      setError('Pick at least one way to receive prompts.');
+      return;
+    }
+    if (delivery.email && !isValidEmail(contact.email)) {
+      setError('Add a valid email address for email delivery.');
+      return;
+    }
+    if ((delivery.text || delivery.phone) && !isValidPhone(contact.phone)) {
+      setError('Add a valid phone number for text or call delivery.');
+      return;
+    }
+    setError('');
+    setBusy(true);
+    try {
+      // Launch a daily-prompt campaign. A scheduled backend job reads active
+      // campaigns and sends PROMPTS[currentIndex] via the chosen channels,
+      // advancing one per day.
+      const newCampaign = {
+        status: 'active',
+        cadence: 'daily',
+        total: PROMPTS.length,
+        currentIndex: 0,
+        startedAt: serverTimestamp(),
+        nextSendAt: null, // null = send the first prompt on the next run
+        lastSentAt: null,
+      };
+      await persistOnboarding({ onboarded: true, campaign: newCampaign });
+      setCampaign(newCampaign);
+      setPhase('active');
+    } catch (err) {
+      setError(friendly(err));
+    }
+    setBusy(false);
+  };
 
   const handleSignOut = async () => {
     await signOut(auth);
     setUser(null);
-    setAnswers(Array(PROMPTS.length).fill(''));
-    setIndex(0);
+    setCampaign(null);
     setPhase('account');
   };
 
   /* ---------- shell ---------- */
-  const progress =
-    phase === 'week'
-      ? ((index + 1) / PROMPTS.length) * 100
-      : phase === 'done'
-      ? 100
-      : phase === 'welcome'
-      ? 8
-      : 0;
+  const STEP_PROGRESS = { welcome: 12, storyteller: 45, delivery: 78 };
+  const progress = phase === 'active' ? 100 : STEP_PROGRESS[phase] || 0;
 
   /* ---------- auth phases: shared centered card (consistent with /login) ---------- */
   if (phase === 'loading' || phase === 'finishing') {
     return (
       <AuthCard>
-        <div className="done-seal">✦</div>
-        <h2 className="auth-title">
-          {phase === 'finishing' ? 'Signing you in…' : 'One moment…'}
-        </h2>
-        <p className="auth-lead">Getting your saga ready.</p>
+        {error ? (
+          <>
+            <div className="done-seal">⚠️</div>
+            <h2 className="auth-title">We hit a snag.</h2>
+            <p className="auth-lead">{error}</p>
+            <button
+              className="btn btn-gold btn-lg"
+              onClick={() => window.location.reload()}
+            >
+              Try again
+            </button>
+            {user && (
+              <p className="auth-alt">
+                <button className="link-btn" onClick={handleSignOut}>
+                  Sign out
+                </button>
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="done-seal">✦</div>
+            <h2 className="auth-title">
+              {phase === 'finishing' ? 'Signing you in…' : 'One moment…'}
+            </h2>
+            <p className="auth-lead">Getting your saga ready.</p>
+          </>
+        )}
       </AuthCard>
     );
   }
@@ -252,99 +345,283 @@ const Start = () => {
     content = (
       <>
         <p className="step-eyebrow">You're in 🎉</p>
-        <h2>Welcome — let's preserve your first week.</h2>
+        <h2>Welcome — let's set up your free week.</h2>
         <p className="q-help">
-          Over the next seven prompts we'll help you capture stories worth keeping.
-          Answer one a day or breeze through them all — there's no wrong pace, and
-          everything saves to your account automatically.
+          Two quick questions and you'll be ready to go: who the stories are for,
+          and how they'd like to receive each prompt. Everything saves
+          automatically.
         </p>
         {error && <p className="trial-error">{error}</p>}
         <div className="onboard-actions">
           <span />
-          <button className="btn btn-gold btn-lg" onClick={startWeek}>
-            Begin Day 1 →
+          <button
+            className="btn btn-gold btn-lg"
+            onClick={() => {
+              setError('');
+              setPhase('storyteller');
+            }}
+          >
+            Let's begin →
           </button>
         </div>
       </>
     );
-  } else if (phase === 'done') {
-    const written = PROMPTS.map((p, i) => ({ ...p, answer: answers[i] })).filter(
-      (p) => p.answer.trim()
-    );
-    const words = answers.join(' ').trim().split(/\s+/).filter(Boolean).length;
+  } else if (phase === 'storyteller') {
     content = (
       <>
-        <div className="done-card">
-          <div className="done-seal">✦</div>
-          <h2>Look what you made.</h2>
-          <p className="q-help">
-            Your first week is saved to your account — {written.length}{' '}
-            {written.length === 1 ? 'story' : 'stories'}, {words} words. This is how
-            a saga begins.
-          </p>
+        <p className="step-eyebrow">Step 1 of 2 · Storyteller</p>
+        <h2>Whose stories are we preserving?</h2>
+        <p className="q-help">You can always add more storytellers later.</p>
+
+        <div className="option-grid cols-2">
+          <button
+            className={`option ${storyteller.who === 'self' ? 'selected' : ''}`}
+            onClick={() => setStoryteller((s) => ({ ...s, who: 'self' }))}
+          >
+            <span className="opt-ico">🙋</span>
+            <span>
+              <span className="opt-title">Myself</span>
+              <span className="opt-desc">
+                I'll answer the prompts and tell my own story.
+              </span>
+            </span>
+            <span className="opt-check">✓</span>
+          </button>
+          <button
+            className={`option ${storyteller.who === 'other' ? 'selected' : ''}`}
+            onClick={() => setStoryteller((s) => ({ ...s, who: 'other' }))}
+          >
+            <span className="opt-ico">💌</span>
+            <span>
+              <span className="opt-title">Someone else</span>
+              <span className="opt-desc">
+                A parent, grandparent, or loved one — we'll guide them.
+              </span>
+            </span>
+            <span className="opt-check">✓</span>
+          </button>
         </div>
 
-        {written.length > 0 && (
-          <div className="recap-list">
-            {written.map((p) => (
-              <div className="recap-item" key={p.day}>
-                <span className="recap-day">{p.day}</span>
-                <p className="recap-q">{p.q}</p>
-                <p className="recap-a">{p.answer}</p>
+        {storyteller.who && (
+          <div className="onboard-fields">
+            <div className="field">
+              <label htmlFor="st-name">
+                {storyteller.who === 'self' ? 'Your name' : "Storyteller's name"}
+              </label>
+              <input
+                id="st-name"
+                type="text"
+                value={storyteller.name}
+                onChange={(e) =>
+                  setStoryteller((s) => ({ ...s, name: e.target.value }))
+                }
+                placeholder={
+                  storyteller.who === 'self' ? 'Your name' : 'e.g. Grandma Rose'
+                }
+              />
+            </div>
+            {storyteller.who === 'other' && (
+              <div className="field">
+                <label htmlFor="st-rel">
+                  Your relationship to them{' '}
+                  <span className="optional">(optional)</span>
+                </label>
+                <input
+                  id="st-rel"
+                  type="text"
+                  value={storyteller.relationship}
+                  onChange={(e) =>
+                    setStoryteller((s) => ({
+                      ...s,
+                      relationship: e.target.value,
+                    }))
+                  }
+                  placeholder="e.g. granddaughter"
+                />
               </div>
-            ))}
+            )}
           </div>
         )}
 
-        <div className="trial-cta-row">
+        {error && <p className="trial-error">{error}</p>}
+        <div className="onboard-actions">
+          <button className="link-btn" onClick={() => setPhase('welcome')}>
+            ← Back
+          </button>
           <button
             className="btn btn-gold btn-lg"
-            onClick={() => {
-              setIndex(0);
-              setPhase('week');
-            }}
+            onClick={submitStoryteller}
+            disabled={busy || !storyteller.who}
           >
-            Review or keep editing
+            {busy ? 'Saving…' : 'Continue →'}
           </button>
-          <Link to="/" className="link-btn">
-            Back to home
-          </Link>
+        </div>
+      </>
+    );
+  } else if (phase === 'delivery') {
+    const stName =
+      storyteller.who === 'self'
+        ? 'you'
+        : storyteller.name.trim().split(/\s+/)[0] || 'they';
+    content = (
+      <>
+        <p className="step-eyebrow">Step 2 of 2 · Delivery</p>
+        <h2>How should {stName} receive each prompt?</h2>
+        <p className="q-help">
+          Pick one or more — we'll send a new prompt every day.
+        </p>
+
+        <div className="option-grid">
+          <button
+            className={`option ${delivery.text ? 'selected' : ''}`}
+            onClick={() => toggleChannel('text')}
+          >
+            <span className="opt-ico">📱</span>
+            <span>
+              <span className="opt-title">Text message</span>
+              <span className="opt-desc">A daily prompt by SMS.</span>
+            </span>
+            <span className="opt-check">✓</span>
+          </button>
+
+          <button
+            className={`option ${delivery.email ? 'selected' : ''}`}
+            onClick={() => toggleChannel('email')}
+          >
+            <span className="opt-ico">✉️</span>
+            <span>
+              <span className="opt-title">Email</span>
+              <span className="opt-desc">A daily prompt in their inbox.</span>
+            </span>
+            <span className="opt-check">✓</span>
+          </button>
+
+          <button
+            className={`option ${delivery.phone ? 'selected' : ''}`}
+            onClick={() => phoneEnabled && toggleChannel('phone')}
+            disabled={!phoneEnabled}
+          >
+            <span className="opt-ico">📞</span>
+            <span>
+              <span className="opt-title">
+                Phone call
+                {!phoneEnabled && <span className="opt-lock">Legacy</span>}
+              </span>
+              <span className="opt-desc">
+                {phoneEnabled
+                  ? 'We call, chat, and record their answer.'
+                  : 'A real call to capture their voice — available on the Legacy plan.'}
+              </span>
+            </span>
+            <span className="opt-check">✓</span>
+          </button>
+        </div>
+
+        {delivery.email && (
+          <div className="field">
+            <label htmlFor="dl-email">Email address</label>
+            <input
+              id="dl-email"
+              type="email"
+              value={contact.email}
+              onChange={(e) =>
+                setContact((c) => ({ ...c, email: e.target.value }))
+              }
+              placeholder="name@email.com"
+            />
+          </div>
+        )}
+        {(delivery.text || delivery.phone) && (
+          <div className="field">
+            <label htmlFor="dl-phone">Phone number</label>
+            <input
+              id="dl-phone"
+              type="tel"
+              value={contact.phone}
+              onChange={(e) =>
+                setContact((c) => ({ ...c, phone: e.target.value }))
+              }
+              placeholder="(555) 123-4567"
+            />
+          </div>
+        )}
+
+        {error && <p className="trial-error">{error}</p>}
+        <div className="onboard-actions">
+          <button className="link-btn" onClick={() => setPhase('storyteller')}>
+            ← Back
+          </button>
+          <button
+            className="btn btn-gold btn-lg"
+            onClick={submitDelivery}
+            disabled={busy}
+          >
+            {busy ? 'Launching…' : 'Start daily prompts →'}
+          </button>
         </div>
       </>
     );
   } else {
-    /* phase === 'week' */
-    const current = PROMPTS[index];
-    const isLast = index === PROMPTS.length - 1;
+    /* phase === 'active' — daily campaign is live */
+    const firstName =
+      storyteller.who === 'self'
+        ? 'You'
+        : storyteller.name.trim().split(/\s+/)[0] || 'Your storyteller';
+    const channels = [
+      delivery.text && 'text',
+      delivery.email && 'email',
+      delivery.phone && 'phone call',
+    ].filter(Boolean);
+    const channelLabel =
+      channels.length <= 1
+        ? channels[0] || 'their chosen channel'
+        : channels.slice(0, -1).join(', ') + ' and ' + channels.slice(-1);
+    const deliveredTo = [
+      delivery.email && contact.email,
+      (delivery.text || delivery.phone) && contact.phone,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     content = (
       <>
-        <p className="step-eyebrow">
-          {current.day} of {PROMPTS.length}
-        </p>
-        <h2>{current.q}</h2>
-        <p className="q-help">{current.help}</p>
+        <div className="done-card">
+          <div className="done-seal">✦</div>
+          <h2>
+            {storyteller.who === 'self'
+              ? "You're all set."
+              : `${firstName} is all set.`}
+          </h2>
+          <p className="q-help">
+            The free week has begun. {firstName} will get{' '}
+            <strong>one prompt a day</strong> via {channelLabel} — just reply to
+            each message and every answer is saved to your private archive.
+          </p>
+        </div>
 
-        <textarea
-          className="trial-textarea"
-          placeholder="Start anywhere…"
-          value={answers[index]}
-          onChange={(e) => setAnswer(e.target.value)}
-          rows={8}
-        />
-        {error && <p className="trial-error">{error}</p>}
-
-        <div className="onboard-actions">
-          <button className="link-btn" onClick={goBack} disabled={index === 0}>
-            ← Back
-          </button>
-          <div className="trial-actions-right">
-            <button className="link-btn" onClick={goNext} disabled={busy}>
-              Skip
-            </button>
-            <button className="btn btn-primary" onClick={goNext} disabled={busy}>
-              {busy ? 'Saving…' : isLast ? 'Finish my week' : 'Save & continue →'}
-            </button>
+        <div className="onboard-summary">
+          <div className="row">
+            <span className="k">Cadence</span>
+            <span className="v">
+              One prompt per day · {campaign?.total ?? PROMPTS.length} days
+            </span>
           </div>
+          <div className="row">
+            <span className="k">Delivered to</span>
+            <span className="v">{deliveredTo}</span>
+          </div>
+          <div className="row">
+            <span className="k">First prompt</span>
+            <span className="v">“{PROMPTS[0].q}”</span>
+          </div>
+        </div>
+
+        <div className="trial-cta-row">
+          <button className="btn btn-ghost" onClick={() => setPhase('delivery')}>
+            Change delivery settings
+          </button>
+          <Link to="/" className="link-btn">
+            Back to home
+          </Link>
         </div>
       </>
     );
